@@ -1,7 +1,9 @@
 package smtp
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net"
 	"net/smtp"
 	"strconv"
 	"time"
@@ -18,6 +20,7 @@ type ServerTest struct {
 	senderName   string
 	senderMail   string
 	receiverMail string
+	helo         string
 	workerSize   int
 	batchSize    int
 	jobCount     int
@@ -25,6 +28,7 @@ type ServerTest struct {
 }
 
 func (s *ServerTest) sendMail(order interface{}) error {
+	//var wc io.WriteCloser
 	mailTemplate := "To: %s\r\n" +
 		"From: %s <%s>" + "\r\n" +
 		"Subject: %s\r\n" +
@@ -35,27 +39,112 @@ func (s *ServerTest) sendMail(order interface{}) error {
 	body := "Mail " + strconv.Itoa(order.(int)) + "\r\n\r\n...RANDOM DATA..."
 
 	mail := fmt.Sprintf(mailTemplate, s.receiverMail, s.senderName, s.senderMail, subject, body)
-	msg := []byte(mail)
 
 	auth := smtp.PlainAuth("", s.senderMail, s.password, s.server)
 
-	to := []string{s.receiverMail}
-	start := time.Now()
-	err := smtp.SendMail(s.server+":"+s.port, auth, s.senderMail, to, msg)
-	duration := time.Since(start).Seconds()
+	stat := statistics.NewStatistic()
 
+	start := time.Now()
+	conn, err := net.Dial("tcp", s.server+":"+s.port)
 	if err != nil {
-		s.St.AddStatistic(statistics.Statistic{
-			Duration: duration,
-			Success:  false,
-		})
+		stat["DIAL"] = time.Since(start).Seconds()
+		s.St.Unsuccess += 1
+		s.St.AddStatistic(stat)
+		return err
+	}
+	s.St.RemoteIp = conn.RemoteAddr().String()
+	stat["DIAL"] = time.Since(start).Seconds()
+
+	start = time.Now()
+	c, err := smtp.NewClient(conn, s.server)
+	if err != nil {
+		stat["TOUCH"] = time.Since(start).Seconds()
+		s.St.Unsuccess += 1
+		s.St.AddStatistic(stat)
+		return err
+	}
+	defer c.Close()
+	stat["TOUCH"] = time.Since(start).Seconds()
+
+	start = time.Now()
+	err = c.Hello(s.helo)
+	if err != nil {
+		stat["HELO"] = time.Since(start).Seconds()
+		s.St.Unsuccess += 1
+		s.St.AddStatistic(stat)
+		return err
+	}
+	stat["HELO"] = time.Since(start).Seconds()
+
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		config := &tls.Config{InsecureSkipVerify: true}
+		if err = c.StartTLS(config); err != nil {
+			return err
+		}
+	}
+
+	err = c.Auth(auth)
+	if err != nil {
 		return err
 	}
 
-	s.St.AddStatistic(statistics.Statistic{
-		Duration: duration,
-		Success:  true,
-	})
+	start = time.Now()
+	err = c.Mail(s.senderMail)
+	if err != nil {
+		stat["MAIL"] = time.Since(start).Seconds()
+		s.St.Unsuccess += 1
+		s.St.AddStatistic(stat)
+		return err
+	}
+	stat["MAIL"] = time.Since(start).Seconds()
+
+	start = time.Now()
+	err = c.Rcpt(s.receiverMail)
+	if err != nil {
+		stat["RCPT"] = time.Since(start).Seconds()
+		s.St.Unsuccess += 1
+		s.St.AddStatistic(stat)
+		return err
+	}
+	stat["RCPT"] = time.Since(start).Seconds()
+
+	start = time.Now()
+	wc, err := c.Data()
+	if err != nil {
+		stat["DATA"] = time.Since(start).Seconds()
+		s.St.Unsuccess += 1
+		s.St.AddStatistic(stat)
+		return err
+	}
+	_, err = fmt.Fprint(wc, mail)
+	if err != nil {
+		stat["DATA"] = time.Since(start).Seconds()
+		s.St.Unsuccess += 1
+		s.St.AddStatistic(stat)
+		return err
+	}
+
+	err = wc.Close()
+	if err != nil {
+		stat["DATA"] = time.Since(start).Seconds()
+		s.St.Unsuccess += 1
+		s.St.AddStatistic(stat)
+		return err
+	}
+	stat["DATA"] = time.Since(start).Seconds()
+
+	start = time.Now()
+	err = c.Quit()
+	if err != nil {
+		stat["QUIT"] = time.Since(start).Seconds()
+		s.St.Unsuccess += 1
+		s.St.AddStatistic(stat)
+		return err
+	}
+	stat["QUIT"] = time.Since(start).Seconds()
+
+	s.St.Success += 1
+	s.St.AddStatistic(stat)
 
 	return nil
 }
@@ -73,10 +162,11 @@ func (s *ServerTest) SendTestMails() {
 
 }
 
-func New(server string, port string, password string, senderName string, senderMail string, receiverMail string, workerSize int, batchSize int, jobCount int) (*ServerTest, error) {
+func New(server string, port string, helo string, password string, senderName string, senderMail string, receiverMail string, workerSize int, batchSize int, jobCount int) (*ServerTest, error) {
 	return &ServerTest{
 		server:       server,
 		port:         port,
+		helo:         helo,
 		password:     password,
 		senderName:   senderName,
 		senderMail:   senderMail,

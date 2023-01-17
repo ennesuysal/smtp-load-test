@@ -15,6 +15,7 @@ func main() {
 
 	smtpServer := flag.String("smtpServer", "test.yartu.io", "-smtpServer test.yartu.io")
 	smtpPort := flag.String("smtpPort", "587", "-smtpPort 587")
+	helo := flag.String("helo", "mail.example.com", "-helo mail.example.com")
 	smtpPassword := flag.String("smtpPassword", "", "-smtpPassword")
 	senderName := flag.String("senderName", "John Doe", "-senderName")
 	senderMail := flag.String("senderMail", "sender@example.com", "-senderMail")
@@ -22,7 +23,7 @@ func main() {
 
 	flag.Parse()
 
-	s, _ := server.New(*smtpServer, *smtpPort, *smtpPassword, *senderName, *senderMail, *receiverMail, *workerSize, *batchSize, *jobCount)
+	s, _ := server.New(*smtpServer, *smtpPort, *helo, *smtpPassword, *senderName, *senderMail, *receiverMail, *workerSize, *batchSize, *jobCount)
 
 	start := time.Now()
 	s.SendTestMails()
