@@ -10,8 +10,8 @@ import (
 
 type Statistics struct {
 	sl              []map[string]float64
-	Success         int
-	Unsuccess       int
+	success         int
+	unsuccess       int
 	RemoteIp        string
 	ProcessDuration float64
 	totalStatistic  map[string]float64
@@ -19,10 +19,7 @@ type Statistics struct {
 	minStatistics   map[string]float64
 	maxStatistics   map[string]float64
 	slMutex         sync.RWMutex
-	totalMutex      sync.RWMutex
-	avgMutex        sync.RWMutex
-	minMutex        sync.RWMutex
-	maxMutex        sync.RWMutex
+	successMutex    sync.RWMutex
 }
 
 func (s *Statistics) AddStatistic(st map[string]float64) {
@@ -31,10 +28,20 @@ func (s *Statistics) AddStatistic(st map[string]float64) {
 	s.slMutex.Unlock()
 }
 
+func (s *Statistics) AddSuccess(success bool) {
+	s.successMutex.Lock()
+	if success {
+		s.success += 1
+	} else {
+		s.unsuccess += 1
+	}
+	s.successMutex.Unlock()
+}
+
 func (s *Statistics) Report() {
 	fmt.Println("==================================================================")
 	w := tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)
-	fmt.Fprintf(w, "SUCCESS:\t%d\nFAILED:\t%d\n", s.Success, s.Unsuccess)
+	fmt.Fprintf(w, "SUCCESS:\t%d\nFAILED:\t%d\n", s.success, s.unsuccess)
 	w.Flush()
 	fmt.Println("==================================================================")
 
@@ -55,66 +62,51 @@ func (s *Statistics) Report() {
 }
 
 func (s *Statistics) sumStatistics() {
-	s.totalStatistic = NewStatistic()
 	for _, st := range s.sl {
 		for key, value := range st {
-			s.totalMutex.Lock()
 			s.totalStatistic[key] += value
-			s.totalMutex.Unlock()
 		}
 	}
 }
 
 func (s *Statistics) calcavgStatistics() {
-	s.avgStatistics = NewStatistic()
 	for key, value := range s.totalStatistic {
-		s.avgMutex.Lock()
 		s.avgStatistics[key] = value / float64(len(s.sl))
-		s.avgMutex.Unlock()
 	}
 }
 
 func (s *Statistics) calcMinmaxStatistics() {
-	min := math.MaxFloat64
-	max := 0.0
-	s.maxStatistics = NewStatistic()
-	s.minStatistics = NewStatistic()
-
 	for _, st := range s.sl {
 		for key, value := range st {
-			if value > max {
-				s.maxMutex.Lock()
+			if value > s.maxStatistics[key] {
 				s.maxStatistics[key] = value
-				s.maxMutex.Unlock()
 			}
 
-			if value < min {
-				s.minMutex.Lock()
+			if value < s.minStatistics[key] {
 				s.minStatistics[key] = value
-				s.minMutex.Unlock()
 			}
 		}
 	}
 }
 
-func NewStatistic() map[string]float64 {
+func NewStatistic(initial float64) map[string]float64 {
 	return map[string]float64{
-		"DIAL":  0,
-		"TOUCH": 0,
-		"HELO":  0,
-		"MAIL":  0,
-		"RCPT":  0,
-		"DATA":  0,
-		"QUIT":  0,
+		"DIAL":  initial,
+		"TOUCH": initial,
+		"HELO":  initial,
+		"MAIL":  initial,
+		"RCPT":  initial,
+		"DATA":  initial,
+		"QUIT":  initial,
 	}
 }
 
-func NewStatistics(initial float64) *Statistics {
+func NewStatistics() *Statistics {
 	return &Statistics{
 		sl:             make([]map[string]float64, 0),
-		totalStatistic: NewStatistic(),
-		avgStatistics:  NewStatistic(),
-		minStatistics:  NewStatistic(),
-		maxStatistics:  NewStatistic(),
+		totalStatistic: NewStatistic(0),
+		avgStatistics:  NewStatistic(0),
+		minStatistics:  NewStatistic(math.MaxFloat64),
+		maxStatistics:  NewStatistic(0),
 	}
 }

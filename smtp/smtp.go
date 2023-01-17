@@ -28,7 +28,6 @@ type ServerTest struct {
 }
 
 func (s *ServerTest) sendMail(order interface{}) error {
-	//var wc io.WriteCloser
 	mailTemplate := "To: %s\r\n" +
 		"From: %s <%s>" + "\r\n" +
 		"Subject: %s\r\n" +
@@ -42,13 +41,13 @@ func (s *ServerTest) sendMail(order interface{}) error {
 
 	auth := smtp.PlainAuth("", s.senderMail, s.password, s.server)
 
-	stat := statistics.NewStatistic()
+	stat := statistics.NewStatistic(0)
 
 	start := time.Now()
 	conn, err := net.Dial("tcp", s.server+":"+s.port)
 	if err != nil {
 		stat["DIAL"] = time.Since(start).Seconds()
-		s.St.Unsuccess += 1
+		s.St.AddSuccess(false)
 		s.St.AddStatistic(stat)
 		return err
 	}
@@ -59,7 +58,7 @@ func (s *ServerTest) sendMail(order interface{}) error {
 	c, err := smtp.NewClient(conn, s.server)
 	if err != nil {
 		stat["TOUCH"] = time.Since(start).Seconds()
-		s.St.Unsuccess += 1
+		s.St.AddSuccess(false)
 		s.St.AddStatistic(stat)
 		return err
 	}
@@ -70,7 +69,7 @@ func (s *ServerTest) sendMail(order interface{}) error {
 	err = c.Hello(s.helo)
 	if err != nil {
 		stat["HELO"] = time.Since(start).Seconds()
-		s.St.Unsuccess += 1
+		s.St.AddSuccess(false)
 		s.St.AddStatistic(stat)
 		return err
 	}
@@ -92,7 +91,7 @@ func (s *ServerTest) sendMail(order interface{}) error {
 	err = c.Mail(s.senderMail)
 	if err != nil {
 		stat["MAIL"] = time.Since(start).Seconds()
-		s.St.Unsuccess += 1
+		s.St.AddSuccess(false)
 		s.St.AddStatistic(stat)
 		return err
 	}
@@ -102,7 +101,7 @@ func (s *ServerTest) sendMail(order interface{}) error {
 	err = c.Rcpt(s.receiverMail)
 	if err != nil {
 		stat["RCPT"] = time.Since(start).Seconds()
-		s.St.Unsuccess += 1
+		s.St.AddSuccess(false)
 		s.St.AddStatistic(stat)
 		return err
 	}
@@ -112,14 +111,14 @@ func (s *ServerTest) sendMail(order interface{}) error {
 	wc, err := c.Data()
 	if err != nil {
 		stat["DATA"] = time.Since(start).Seconds()
-		s.St.Unsuccess += 1
+		s.St.AddSuccess(false)
 		s.St.AddStatistic(stat)
 		return err
 	}
 	_, err = fmt.Fprint(wc, mail)
 	if err != nil {
 		stat["DATA"] = time.Since(start).Seconds()
-		s.St.Unsuccess += 1
+		s.St.AddSuccess(false)
 		s.St.AddStatistic(stat)
 		return err
 	}
@@ -127,7 +126,7 @@ func (s *ServerTest) sendMail(order interface{}) error {
 	err = wc.Close()
 	if err != nil {
 		stat["DATA"] = time.Since(start).Seconds()
-		s.St.Unsuccess += 1
+		s.St.AddSuccess(false)
 		s.St.AddStatistic(stat)
 		return err
 	}
@@ -137,13 +136,13 @@ func (s *ServerTest) sendMail(order interface{}) error {
 	err = c.Quit()
 	if err != nil {
 		stat["QUIT"] = time.Since(start).Seconds()
-		s.St.Unsuccess += 1
+		s.St.AddSuccess(false)
 		s.St.AddStatistic(stat)
 		return err
 	}
 	stat["QUIT"] = time.Since(start).Seconds()
 
-	s.St.Success += 1
+	s.St.AddSuccess(true)
 	s.St.AddStatistic(stat)
 
 	return nil
@@ -174,6 +173,6 @@ func New(server string, port string, helo string, password string, senderName st
 		workerSize:   workerSize,
 		batchSize:    batchSize,
 		jobCount:     jobCount,
-		St:           statistics.Statistics{},
+		St:           *statistics.NewStatistics(),
 	}, nil
 }
