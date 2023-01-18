@@ -17,6 +17,9 @@ type ServerTest struct {
 	server       string
 	port         string
 	password     string
+	sslEnabled   bool
+	startTLS     bool
+	authEnabled  bool
 	senderName   string
 	senderMail   string
 	receiverMail string
@@ -36,21 +39,41 @@ func (s *ServerTest) sendMail(order interface{}) error {
 
 	subject := "SMTP Load Test - Mail " + strconv.Itoa(order.(int))
 	body := "Mail " + strconv.Itoa(order.(int)) + "\r\n\r\n...RANDOM DATA..."
-
 	mail := fmt.Sprintf(mailTemplate, s.receiverMail, s.senderName, s.senderMail, subject, body)
-
-	auth := smtp.PlainAuth("", s.senderMail, s.password, s.server)
 
 	stat := statistics.NewStatistic(0)
 
-	start := time.Now()
-	conn, err := net.Dial("tcp", s.server+":"+s.port)
-	if err != nil {
-		stat["DIAL"] = time.Since(start).Seconds()
-		s.St.AddSuccess(false)
-		s.St.AddStatistic(stat)
-		return err
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+		ServerName:         s.server,
 	}
+	var auth smtp.Auth
+	var conn net.Conn
+	var err error
+
+	if s.authEnabled {
+		auth = smtp.PlainAuth("", s.senderMail, s.password, s.server)
+	}
+
+	start := time.Now()
+	if s.sslEnabled {
+		conn, err = tls.Dial("tcp", s.server+":"+s.port, tlsConfig)
+		if err != nil {
+			stat["DIAL"] = time.Since(start).Seconds()
+			s.St.AddSuccess(false)
+			s.St.AddStatistic(stat)
+			return err
+		}
+	} else {
+		conn, err = net.Dial("tcp", s.server+":"+s.port)
+		if err != nil {
+			stat["DIAL"] = time.Since(start).Seconds()
+			s.St.AddSuccess(false)
+			s.St.AddStatistic(stat)
+			return err
+		}
+	}
+
 	s.St.RemoteIp = conn.RemoteAddr().String()
 	stat["DIAL"] = time.Since(start).Seconds()
 
@@ -75,16 +98,23 @@ func (s *ServerTest) sendMail(order interface{}) error {
 	}
 	stat["HELO"] = time.Since(start).Seconds()
 
-	if ok, _ := c.Extension("STARTTLS"); ok {
-		config := &tls.Config{InsecureSkipVerify: true}
-		if err = c.StartTLS(config); err != nil {
-			return err
+	if s.startTLS {
+		if ok, _ := c.Extension("STARTTLS"); ok {
+			if err = c.StartTLS(tlsConfig); err != nil {
+				s.St.AddSuccess(false)
+				s.St.AddStatistic(stat)
+				return err
+			}
 		}
 	}
 
-	err = c.Auth(auth)
-	if err != nil {
-		return err
+	if s.authEnabled {
+		err = c.Auth(auth)
+		if err != nil {
+			s.St.AddSuccess(false)
+			s.St.AddStatistic(stat)
+			return err
+		}
 	}
 
 	start = time.Now()
@@ -161,10 +191,13 @@ func (s *ServerTest) SendTestMails() {
 
 }
 
-func New(server string, port string, helo string, password string, senderName string, senderMail string, receiverMail string, workerSize int, batchSize int, jobCount int) (*ServerTest, error) {
+func New(server string, port string, sslEnabled bool, startTLS bool, authEnabled bool, helo string, password string, senderName string, senderMail string, receiverMail string, workerSize int, batchSize int, jobCount int) (*ServerTest, error) {
 	return &ServerTest{
 		server:       server,
 		port:         port,
+		sslEnabled:   sslEnabled,
+		startTLS:     startTLS,
+		authEnabled:  authEnabled,
 		helo:         helo,
 		password:     password,
 		senderName:   senderName,

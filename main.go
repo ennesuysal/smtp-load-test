@@ -20,10 +20,13 @@ func main() {
 	senderName := flag.String("senderName", "John Doe", "-senderName")
 	senderMail := flag.String("senderMail", "sender@example.com", "-senderMail")
 	receiverMail := flag.String("receiverMail", "receiver@example.com", "-receiverMail")
+	sslEnabled := flag.Bool("sslEnabled", false, "-sslEnabled true")
+	startTLS := flag.Bool("startTLS", true, "-startTLS false")
+	authEnabled := flag.Bool("authEnabled", true, "-authEnabled false")
 
 	flag.Parse()
 
-	s, _ := server.New(*smtpServer, *smtpPort, *helo, *smtpPassword, *senderName, *senderMail, *receiverMail, *workerSize, *batchSize, *jobCount)
+	s, _ := server.New(*smtpServer, *smtpPort, *sslEnabled, *startTLS, *authEnabled, *helo, *smtpPassword, *senderName, *senderMail, *receiverMail, *workerSize, *batchSize, *jobCount)
 
 	start := time.Now()
 	s.SendTestMails()
