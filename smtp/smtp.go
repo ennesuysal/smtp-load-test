@@ -3,6 +3,7 @@ package smtp
 import (
 	"crypto/tls"
 	"fmt"
+	"math/rand"
 	"net"
 	"net/smtp"
 	"strconv"
@@ -20,6 +21,7 @@ type ServerTest struct {
 	sslEnabled   bool
 	startTLS     bool
 	authEnabled  bool
+	data         string
 	senderName   string
 	senderMail   string
 	receiverMail string
@@ -38,7 +40,7 @@ func (s *ServerTest) sendMail(order interface{}) error {
 		"%s"
 
 	subject := "SMTP Load Test - Mail " + strconv.Itoa(order.(int))
-	body := "Mail " + strconv.Itoa(order.(int)) + "\r\n\r\n...RANDOM DATA..."
+	body := s.data
 	mail := fmt.Sprintf(mailTemplate, s.receiverMail, s.senderName, s.senderMail, subject, body)
 
 	stat := statistics.NewStatistic(0)
@@ -191,13 +193,61 @@ func (s *ServerTest) SendTestMails() {
 
 }
 
-func New(server string, port string, sslEnabled bool, startTLS bool, authEnabled bool, helo string, password string, senderName string, senderMail string, receiverMail string, workerSize int, batchSize int, jobCount int) (*ServerTest, error) {
+func parseSize(text string) (int, bool) {
+	size, err := strconv.Atoi(text)
+	if err == nil {
+		return size, true
+	}
+
+	size = 5 * 1024
+	u := text[len(text)-1]
+
+	if u == 'K' || u == 'k' {
+		size, err = strconv.Atoi(text[:len(text)-1])
+		if err != nil {
+			return -1, false
+		}
+		size = size * 1024
+	} else if u == 'M' || u == 'm' {
+		size, err = strconv.Atoi(text[:len(text)-1])
+		if err != nil {
+			return -1, false
+		}
+		size = size * 1024 * 1024
+	} else if text[len(text)-1] == 'B' || text[len(text)-1] == 'b' {
+		text = text[:len(text)-1]
+		size, err = strconv.Atoi(text)
+		if err != nil {
+			return -1, false
+		}
+	}
+
+	return size, true
+}
+
+func generateData(byteCount int) string {
+	rand.Seed(time.Now().UnixNano())
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	b := make([]byte, byteCount)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
+}
+
+func New(server string, port string, sslEnabled bool, startTLS bool, authEnabled bool, dataSize string, helo string, password string, senderName string, senderMail string, receiverMail string, workerSize int, batchSize int, jobCount int) (*ServerTest, error) {
+	parsedDataSize, ok := parseSize(dataSize)
+	if !ok {
+		parsedDataSize = 5 * 1024
+	}
+
 	return &ServerTest{
 		server:       server,
 		port:         port,
 		sslEnabled:   sslEnabled,
 		startTLS:     startTLS,
 		authEnabled:  authEnabled,
+		data:         generateData(parsedDataSize),
 		helo:         helo,
 		password:     password,
 		senderName:   senderName,

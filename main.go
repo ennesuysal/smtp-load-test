@@ -23,10 +23,10 @@ func main() {
 	sslEnabled := flag.Bool("sslEnabled", false, "-sslEnabled true")
 	startTLS := flag.Bool("startTLS", true, "-startTLS false")
 	authEnabled := flag.Bool("authEnabled", true, "-authEnabled false")
-
+	dataSize := flag.String("dataSize", "5K", "-dataSize 25K")
 	flag.Parse()
 
-	s, _ := server.New(*smtpServer, *smtpPort, *sslEnabled, *startTLS, *authEnabled, *helo, *smtpPassword, *senderName, *senderMail, *receiverMail, *workerSize, *batchSize, *jobCount)
+	s, _ := server.New(*smtpServer, *smtpPort, *sslEnabled, *startTLS, *authEnabled, *dataSize, *helo, *smtpPassword, *senderName, *senderMail, *receiverMail, *workerSize, *batchSize, *jobCount)
 
 	start := time.Now()
 	s.SendTestMails()
